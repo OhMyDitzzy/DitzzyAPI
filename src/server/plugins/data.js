@@ -7,7 +7,7 @@ const handler = {
   exec: async (req, res) => {
     res.json({
       status: 200,
-      message: "Welcome to DitzzyAPI, Lets get started by visit our documentation on: https://api.ditzzy.my.id/docs"
+      message: `Welcome to DitzzyAPI, Lets get started by visit our documentation on: ${req.protocol}://${req.hostname}/docs`
     })
   }  
 }
