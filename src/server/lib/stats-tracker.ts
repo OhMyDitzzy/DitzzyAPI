@@ -97,8 +97,8 @@ class StatsTracker {
       this.stats.totalFailed = data.totalFailed || 0;
       this.stats.uniqueVisitors = new Set(data.uniqueVisitors || []);
       this.stats.startTime = data.startTime || Date.now();
+
       this.stats.endpoints = new Map();
-      
       if (data.endpoints) {
         Object.entries(data.endpoints).forEach(([endpoint, stats]) => {
           this.stats.endpoints.set(endpoint, stats);
@@ -120,7 +120,7 @@ class StatsTracker {
 
   private async saveStats(): Promise<void> {
     if (!this.redis) {
-      return; 
+      return;
     }
 
     try {
@@ -144,8 +144,7 @@ class StatsTracker {
 
       await this.redis.set(this.REDIS_KEY, serialized);
       
-      // We can use this for auto clean up
-      // However, this will be considered later.
+      // use this if we need auto cleanup
       // await this.redis.expire(this.REDIS_KEY, 90 * 24 * 60 * 60);
     } catch (error) {
       console.error('Error saving stats to Redis:', error);
@@ -156,7 +155,7 @@ class StatsTracker {
     if (this.saveTimeout) {
       clearTimeout(this.saveTimeout);
     }
-   
+
     this.saveTimeout = setTimeout(() => {
       this.saveStats();
     }, 5000);
@@ -193,7 +192,19 @@ class StatsTracker {
       }
     }
 
-    this.stats.totalRequests++;
+    const isSuccess = statusCode >= 200 && statusCode < 400;
+    const isServerError = statusCode >= 500;
+
+    if (isSuccess || isServerError) {
+      this.stats.totalRequests++;
+      
+      if (isSuccess) {
+        this.stats.totalSuccess++;
+      } else if (isServerError) {
+        this.stats.totalFailed++;
+      }
+    }
+    
     this.stats.uniqueVisitors.add(clientIp);
 
     const dateKey = new Date(now).toISOString().split('T')[0];
@@ -202,31 +213,27 @@ class StatsTracker {
     }
     this.stats.visitorsByDay.get(dateKey)!.add(clientIp);
 
-    if (statusCode >= 200 && statusCode < 400) {
-      this.stats.totalSuccess++;
-    } else if (statusCode >= 500) {
-      this.stats.totalFailed++;
+    if (isSuccess || isServerError) {
+      if (!this.stats.endpoints.has(endpoint)) {
+        this.stats.endpoints.set(endpoint, {
+          totalRequests: 0,
+          successRequests: 0,
+          failedRequests: 0,
+          lastAccessed: now,
+        });
+      }
+
+      const endpointStats = this.stats.endpoints.get(endpoint)!;
+      endpointStats.totalRequests++;
+      endpointStats.lastAccessed = now;
+
+      if (isSuccess) {
+        endpointStats.successRequests++;
+      } else if (isServerError) {
+        endpointStats.failedRequests++;
+      }
     }
-
-    if (!this.stats.endpoints.has(endpoint)) {
-      this.stats.endpoints.set(endpoint, {
-        totalRequests: 0,
-        successRequests: 0,
-        failedRequests: 0,
-        lastAccessed: now,
-      });
-    }
-
-    const endpointStats = this.stats.endpoints.get(endpoint)!;
-    endpointStats.totalRequests++;
-    endpointStats.lastAccessed = now;
-
-    if (statusCode >= 200 && statusCode < 400) {
-      endpointStats.successRequests++;
-    } else if (statusCode >= 500) {
-      endpointStats.failedRequests++;
-    }
-
+    
     this.scheduleSave();
     
     return true;
