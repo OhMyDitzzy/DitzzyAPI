@@ -237,7 +237,7 @@ app.use((req, res, next) => {
     next();
   });
 
-  const port = parseInt(process.env.PORT || "5000", 10);
+  const port = parseInt(process.env.PORT || "7860", 10);
   httpServer.listen(
     {
       port,

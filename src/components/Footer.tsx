@@ -23,15 +23,15 @@ export function Footer() {
             <h4 className="font-semibold text-white mb-4">Links</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
               <li><a href="/docs" className="hover:text-primary transition-colors">Documentation</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">Status</a></li>
+              <li><a href="https://whatsapp.com/channel/0029Vb7AafUL7UVRIpg1Fy24" className="hover:text-primary transition-colors">WhatsApp Channel</a></li>
             </ul>
           </div>
           
           <div>
             <h4 className="font-semibold text-white mb-4">Legal</h4>
             <ul className="space-y-2 text-sm text-muted-foreground">
-              <li><a href="#" className="hover:text-primary transition-colors">Privacy Policy</a></li>
-              <li><a href="#" className="hover:text-primary transition-colors">Terms of Service</a></li>
+              <li><a href="/privacy" className="hover:text-primary transition-colors">Privacy Policy</a></li>
+              <li><a href="/terms" className="hover:text-primary transition-colors">Terms of Service</a></li>
             </ul>
           </div>
         </div>

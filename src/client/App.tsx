@@ -5,6 +5,8 @@ import { Loader2 } from "lucide-react";
 
 const Home = lazy(() => import("./pages/Home"));
 const Docs = lazy(() => import("./pages/Docs"));
+const Privacy = lazy(() => import("./pages/Privacy"));
+const Terms = lazy(() => import("./pages/Terms"));
 const NotFound = lazy(() => import("./pages/not-found"));
 
 function PageLoader() {
@@ -25,6 +27,8 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/docs" element={<Docs />} />
+          <Route path="/privacy" element={<Privacy />} />
+          <Route path="/terms" element={<Terms />} />
           <Route path="*" element={<NotFound />} />
         </Routes>
       </Suspense>

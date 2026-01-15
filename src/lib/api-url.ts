@@ -1,14 +1,14 @@
 export function getBaseUrl(): string {
   // Check if we're in browser
   if (typeof window !== 'undefined') {
-    if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    /*if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
       return process.env.DOMAIN_URL;
-    }
+    }*/
     return `${window.location.protocol}//${window.location.host}`;
   }
 
   return process.env.NODE_ENV === 'production' 
-    ? process.env.DOMAIN_URL
+    ? `${window.location.protocol}//${window.location.host}`
     : 'http://localhost:5000';
 }
 
