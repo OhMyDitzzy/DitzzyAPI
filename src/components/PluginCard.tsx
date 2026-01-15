@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PluginMetadata } from "@/client/hooks/usePlugin";
 import { Play, ChevronDown, ChevronUp, Copy, Check } from "lucide-react";
@@ -114,6 +115,42 @@ export function PluginCard({ plugin }: PluginCardProps) {
     navigator.clipboard.writeText(requestUrl);
     setCopiedRequestUrl(true);
     setTimeout(() => setCopiedRequestUrl(false), 2000);
+  };
+
+  const renderParameterInput = (param: any) => {
+    if (param.enum && Array.isArray(param.enum) && param.enum.length > 0) {
+      return (
+        <Select
+          value={paramValues[param.name] || ""}
+          onValueChange={(value) => handleParamChange(param.name, value)}
+        >
+          <SelectTrigger className="bg-black/50 border-white/10 text-white focus:border-purple-500">
+            <SelectValue placeholder={`Select ${param.name}...`} />
+          </SelectTrigger>
+          <SelectContent className="bg-zinc-900 border-white/10">
+            {param.enum.map((option: any) => (
+              <SelectItem 
+                key={option} 
+                value={option.toString()}
+                className="text-white hover:bg-white/10 focus:bg-white/10"
+              >
+                {option}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      );
+    } else {
+      return (
+        <Input
+          type="text"
+          placeholder={param.example?.toString() || param.description}
+          value={paramValues[param.name] || ""}
+          onChange={(e) => handleParamChange(param.name, e.target.value)}
+          className="bg-black/50 border-white/10 text-white focus:border-purple-500"
+        />
+      );
+    }
   };
 
   const hasQueryParams = plugin.parameters?.query && plugin.parameters.query.length > 0;
@@ -280,7 +317,14 @@ export function PluginCard({ plugin }: PluginCardProps) {
                       {plugin.parameters?.path?.map((param) => (
                         <tr key={param.name} className="border-b border-white/5">
                           <td className="py-3 pr-4 text-white font-mono">{param.name}</td>
-                          <td className="py-3 pr-4 text-blue-400 font-mono text-xs">{param.type}</td>
+                          <td className="py-3 pr-4">
+                            <span className="text-blue-400 font-mono text-xs">{param.type}</span>
+                            {param.enum && (
+                              <span className="ml-2 text-xs text-gray-500">
+                                (options: {param.enum.join(', ')})
+                              </span>
+                            )}
+                          </td>
                           <td className="py-3 pr-4">
                             <span className={param.required ? "text-red-400" : "text-gray-500"}>
                               {param.required ? "Yes" : "No"}
@@ -293,7 +337,14 @@ export function PluginCard({ plugin }: PluginCardProps) {
                       {plugin.parameters?.query?.map((param) => (
                         <tr key={param.name} className="border-b border-white/5">
                           <td className="py-3 pr-4 text-white font-mono">{param.name}</td>
-                          <td className="py-3 pr-4 text-blue-400 font-mono text-xs">{param.type}</td>
+                          <td className="py-3 pr-4">
+                            <span className="text-blue-400 font-mono text-xs">{param.type}</span>
+                            {param.enum && (
+                              <span className="ml-2 text-xs text-gray-500">
+                                (options: {param.enum.join(', ')})
+                              </span>
+                            )}
+                          </td>
                           <td className="py-3 pr-4">
                             <span className={param.required ? "text-red-400" : "text-gray-500"}>
                               {param.required ? "Yes" : "No"}
@@ -306,7 +357,14 @@ export function PluginCard({ plugin }: PluginCardProps) {
                       {plugin.parameters?.body?.map((param) => (
                         <tr key={param.name} className="border-b border-white/5">
                           <td className="py-3 pr-4 text-white font-mono">{param.name}</td>
-                          <td className="py-3 pr-4 text-blue-400 font-mono text-xs">{param.type}</td>
+                          <td className="py-3 pr-4">
+                            <span className="text-blue-400 font-mono text-xs">{param.type}</span>
+                            {param.enum && (
+                              <span className="ml-2 text-xs text-gray-500">
+                                (options: {param.enum.join(', ')})
+                              </span>
+                            )}
+                          </td>
                           <td className="py-3 pr-4">
                             <span className={param.required ? "text-red-400" : "text-gray-500"}>
                               {param.required ? "Yes" : "No"}
@@ -388,14 +446,13 @@ export function PluginCard({ plugin }: PluginCardProps) {
                       {param.name}
                       {param.required && <span className="text-red-400 ml-1">*</span>}
                       <span className="text-xs text-gray-500 ml-2">({param.type})</span>
+                      {param.enum && (
+                        <span className="text-xs text-purple-400 ml-2">
+                          • Select from options
+                        </span>
+                      )}
                     </label>
-                    <Input
-                      type="text"
-                      placeholder={param.example?.toString() || param.description}
-                      value={paramValues[param.name] || ""}
-                      onChange={(e) => handleParamChange(param.name, e.target.value)}
-                      className="bg-black/50 border-white/10 text-white focus:border-purple-500"
-                    />
+                    {renderParameterInput(param)}
                     <p className="text-xs text-gray-500 mt-1">{param.description}</p>
                   </div>
                 ))}
@@ -407,14 +464,13 @@ export function PluginCard({ plugin }: PluginCardProps) {
                       {param.name}
                       {param.required && <span className="text-red-400 ml-1">*</span>}
                       <span className="text-xs text-gray-500 ml-2">({param.type})</span>
+                      {param.enum && (
+                        <span className="text-xs text-purple-400 ml-2">
+                          • Select from options
+                        </span>
+                      )}
                     </label>
-                    <Input
-                      type="text"
-                      placeholder={param.example?.toString() || param.description}
-                      value={paramValues[param.name] || ""}
-                      onChange={(e) => handleParamChange(param.name, e.target.value)}
-                      className="bg-black/50 border-white/10 text-white focus:border-purple-500"
-                    />
+                    {renderParameterInput(param)}
                     <p className="text-xs text-gray-500 mt-1">{param.description}</p>
                   </div>
                 ))}
