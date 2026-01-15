@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Menu, Terminal, X, Home, BookOpen, ChevronRight } from "lucide-react";
+import { Menu, Terminal, X, Home, BookOpen, Coffee, BadgeAlert, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useCategories } from "@/client/hooks/usePlugin";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -108,6 +108,20 @@ export function Navbar({ onCategorySelect, selectedCategory }: NavbarProps) {
                   <BookOpen className="w-4 h-4" />
                   Documentation
                 </Link>
+                <a
+                  href="https://github.com/OhMyDitzzy/DitzzyAPI/issues"
+                  className="flex items-center gap-2 px-4 py-3 rounded-lg text-purple-400 hover:bg-white/10 transition"
+                >
+                  <BadgeAlert className="w-4 h-4" />
+                  Having an issue? Report here!
+                </a>
+                <a
+                  href="https://saweria.co/DitzzDev"
+                  className="flex items-center gap-2 px-4 py-3 rounded-lg text-purple-400 hover:bg-white/10 transition"
+                >
+                  <Coffee className="w-4 h-4" />
+                  Treat me to coffee
+                </a>
               </div>
             </SheetContent>
           </Sheet>
