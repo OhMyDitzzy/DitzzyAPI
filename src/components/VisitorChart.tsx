@@ -11,16 +11,17 @@ interface VisitorData {
 export function VisitorChart() {
   const [data, setData] = useState<VisitorData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [days, setDays] = useState(30);
 
   useEffect(() => {
     fetchVisitorData();
     const interval = setInterval(fetchVisitorData, 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [days]);
 
   const fetchVisitorData = async () => {
     try {
-      const res = await fetch("/api/stats/visitors");
+      const res = await fetch(`/api/stats/visitors?days=${days}`);
       const json = await res.json();
       if (json.success) {
         setData(json.data);
@@ -34,23 +35,29 @@ export function VisitorChart() {
 
   const formatXAxis = (timestamp: number) => {
     const date = new Date(timestamp);
-    return date.getHours().toString().padStart(2, '0') + ':00';
+    if (days <= 7) {
+      return date.toLocaleDateString('id-ID', { month: 'short', day: 'numeric' });
+    } else if (days <= 30) {
+      return date.toLocaleDateString('id-ID', { month: 'short', day: 'numeric' });
+    } else {
+      return date.toLocaleDateString('id-ID', { month: 'short', day: 'numeric' });
+    }
   };
 
   const CustomTooltip = ({ active, payload }: any) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       const date = new Date(data.timestamp);
-      const timeStr = date.toLocaleString('en-US', {
+      const dateStr = date.toLocaleDateString('id-ID', {
+        weekday: 'short',
         month: 'short',
         day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
+        year: 'numeric',
       });
 
       return (
         <div className="bg-black/90 border border-white/20 rounded-lg p-3 backdrop-blur-sm">
-          <p className="text-xs text-gray-400 mb-1">{timeStr}</p>
+          <p className="text-xs text-gray-400 mb-1">{dateStr}</p>
           <p className="text-sm font-semibold text-purple-400">
             {data.count} visitor{data.count !== 1 ? 's' : ''}
           </p>
@@ -60,11 +67,53 @@ export function VisitorChart() {
     return null;
   };
 
+  const totalVisitors = data.reduce((sum, d) => sum + d.count, 0);
+
   return (
     <Card className="p-6 bg-white/[0.02] border-white/10">
-      <div className="flex items-center gap-2 mb-4">
-        <Users className="w-5 h-5 text-purple-400" />
-        <h3 className="text-lg font-semibold text-white">Visitor Activity (Last 24 Hours)</h3>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <Users className="w-5 h-5 text-purple-400" />
+          <h3 className="text-lg font-semibold text-white">Visitor Activity</h3>
+        </div>
+        
+        <div className="flex gap-2">
+          <button
+            onClick={() => setDays(7)}
+            className={`px-3 py-1 rounded text-sm transition-colors ${
+              days === 7
+                ? 'bg-purple-500 text-white'
+                : 'bg-white/5 text-gray-400 hover:bg-white/10'
+            }`}
+          >
+            7D
+          </button>
+          <button
+            onClick={() => setDays(30)}
+            className={`px-3 py-1 rounded text-sm transition-colors ${
+              days === 30
+                ? 'bg-purple-500 text-white'
+                : 'bg-white/5 text-gray-400 hover:bg-white/10'
+            }`}
+          >
+            30D
+          </button>
+          <button
+            onClick={() => setDays(90)}
+            className={`px-3 py-1 rounded text-sm transition-colors ${
+              days === 90
+                ? 'bg-purple-500 text-white'
+                : 'bg-white/5 text-gray-400 hover:bg-white/10'
+            }`}
+          >
+            90D
+          </button>
+        </div>
+      </div>
+
+      <div className="mb-4">
+        <p className="text-2xl font-bold text-white">{totalVisitors}</p>
+        <p className="text-sm text-gray-400">Total visitors in last {days} days</p>
       </div>
 
       {loading ? (

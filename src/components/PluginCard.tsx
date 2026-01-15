@@ -37,7 +37,7 @@ export function PluginCard({ plugin }: PluginCardProps) {
 
   const handleExecute = async () => {
     setLoading(true);
-    
+
     try {
       let url = "/api" + plugin.endpoint;
       let fullUrl = getApiUrl(plugin.endpoint);
@@ -57,14 +57,12 @@ export function PluginCard({ plugin }: PluginCardProps) {
         }
       }
 
-      // Store the request URL for display
       setRequestUrl(fullUrl);
 
       const fetchOptions: RequestInit = {
         method: plugin.method,
       };
 
-      // Add body for POST/PUT/PATCH
       if (["POST", "PUT", "PATCH"].includes(plugin.method) && plugin.parameters?.body) {
         const bodyData: Record<string, any> = {};
         plugin.parameters.body.forEach((param) => {
@@ -82,7 +80,6 @@ export function PluginCard({ plugin }: PluginCardProps) {
       const res = await fetch(url, fetchOptions);
       const data = await res.json();
 
-      // Capture response headers
       const headers: Record<string, string> = {};
       res.headers.forEach((value, key) => {
         headers[key] = value;
@@ -118,24 +115,24 @@ export function PluginCard({ plugin }: PluginCardProps) {
     setCopiedRequestUrl(true);
     setTimeout(() => setCopiedRequestUrl(false), 2000);
   };
-  
+
   const hasQueryParams = plugin.parameters?.query && plugin.parameters.query.length > 0;
   const hasBodyParams = plugin.parameters?.body && plugin.parameters.body.length > 0;
   const hasPathParams = plugin.parameters?.path && plugin.parameters.path.length > 0;
   const hasAnyParams = hasQueryParams || hasBodyParams || hasPathParams;
-  
+
   const generateCurlExample = () => {
     let curl = `curl -X ${plugin.method} "${getApiUrl(plugin.endpoint)}`;
-    
+
     if (hasQueryParams) {
       const exampleParams = plugin.parameters!.query!
         .map((p) => `${p.name}=${p.example || 'value'}`)
         .join('&');
       curl += `?${exampleParams}`;
     }
-    
+
     curl += '"';
-    
+
     if (hasBodyParams) {
       curl += ' \\\n  -H "Content-Type: application/json" \\\n  -d \'';
       const bodyExample: Record<string, any> = {};
@@ -145,22 +142,22 @@ export function PluginCard({ plugin }: PluginCardProps) {
       curl += JSON.stringify(bodyExample, null, 2);
       curl += "'";
     }
-    
+
     return curl;
   };
 
   const generateNodeExample = () => {
     let code = `const response = await fetch("${getApiUrl(plugin.endpoint)}`;
-    
+
     if (hasQueryParams) {
       const exampleParams = plugin.parameters!.query!
         .map((p) => `${p.name}=${p.example || 'value'}`)
         .join('&');
       code += `?${exampleParams}`;
     }
-    
+
     code += '", {\n  method: "' + plugin.method + '"';
-    
+
     if (hasBodyParams) {
       code += ',\n  headers: {\n    "Content-Type": "application/json"\n  },\n  body: JSON.stringify(';
       const bodyExample: Record<string, any> = {};
@@ -170,76 +167,77 @@ export function PluginCard({ plugin }: PluginCardProps) {
       code += JSON.stringify(bodyExample, null, 2);
       code += ')';
     }
-    
+
     code += '\n});\n\nconst data = await response.json();\nconsole.log(data);';
     return code;
   };
 
   return (
-    <Card className="bg-white/[0.02] border-white/10 overflow-hidden">
+    <Card className="bg-white/[0.02] border-white/10 overflow-hidden w-full">
       {/* Collapsible Header */}
-      <div 
-        className="p-6 border-b border-white/10 cursor-pointer hover:bg-white/[0.02] transition-colors"
+      <div
+        className="p-4 border-b border-white/10 cursor-pointer hover:bg-white/[0.02] transition-colors"
         onClick={() => setIsExpanded(!isExpanded)}
       >
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-3 mb-3 flex-wrap">
-              <Badge className={`${methodColors[plugin.method]} border font-bold px-3 py-1 flex-shrink-0`}>
-                {plugin.method}
-              </Badge>
-              <code className="text-sm text-purple-400 font-mono break-all">{plugin.endpoint}</code>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  copyApiUrl();
-                }}
-                className="text-gray-400 hover:text-white transition-colors p-1 flex-shrink-0"
-                title="Copy API URL"
-              >
-                {copiedUrl ? (
-                  <Check className="w-4 h-4 text-green-400" />
-                ) : (
-                  <Copy className="w-4 h-4" />
-                )}
-              </button>
-            </div>
-            <h3 className="text-xl font-bold text-white mb-2 break-words">{plugin.name}</h3>
-            <p className="text-gray-400 text-sm break-words">{plugin.description}</p>
-            
-            {/* Tags */}
-            {plugin.tags && plugin.tags.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-3">
-                {plugin.tags.map((tag) => (
-                  <Badge key={tag} variant="outline" className="bg-white/5 text-gray-400 border-white/10 text-xs">
-                    {tag}
-                  </Badge>
-                ))}
-              </div>
-            )}
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
+          <Badge className={`${methodColors[plugin.method]} border font-bold px-3 py-1 flex-shrink-0`}>
+            {plugin.method}
+          </Badge>
+          <code className="text-sm text-purple-400 font-mono flex-1 min-w-0 break-all">{plugin.endpoint}</code>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                copyApiUrl();
+              }}
+              className="text-gray-400 hover:text-white transition-colors p-1.5"
+              title="Copy API URL"
+            >
+              {copiedUrl ? (
+                <Check className="w-4 h-4 text-green-400" />
+              ) : (
+                <Copy className="w-4 h-4" />
+              )}
+            </button>
 
-            {/* API URL Display */}
-            <div className="mt-3 flex items-start gap-2">
-              <span className="text-xs text-gray-500 flex-shrink-0">API URL:</span>
-              <code className="text-xs text-gray-300 bg-black/30 px-2 py-1 rounded break-all">
-                {getApiUrl(plugin.endpoint)}
-              </code>
-            </div>
+            <button
+              className="text-gray-400 hover:text-white transition-colors p-1.5"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsExpanded(!isExpanded);
+              }}
+            >
+              {isExpanded ? (
+                <ChevronUp className="w-5 h-5" />
+              ) : (
+                <ChevronDown className="w-5 h-5" />
+              )}
+            </button>
           </div>
+        </div>
 
-          <button 
-            className="text-gray-400 hover:text-white transition-colors flex-shrink-0 p-2 hover:bg-white/5 rounded-lg"
-            onClick={(e) => {
-              e.stopPropagation();
-              setIsExpanded(!isExpanded);
-            }}
-          >
-            {isExpanded ? (
-              <ChevronUp className="w-6 h-6" />
-            ) : (
-              <ChevronDown className="w-6 h-6" />
-            )}
-          </button>
+        <div className="w-full">
+          <h3 className="text-xl font-bold text-white mb-2">{plugin.name}</h3>
+          <p className="text-gray-400 text-sm leading-relaxed">{plugin.description}</p>
+
+          {/* Tags */}
+          {plugin.tags && plugin.tags.length > 0 && (
+            <div className="flex flex-wrap gap-2 mt-3">
+              {plugin.tags.map((tag) => (
+                <Badge key={tag} variant="outline" className="bg-white/5 text-gray-400 border-white/10 text-xs">
+                  {tag}
+                </Badge>
+              ))}
+            </div>
+          )}
+
+          {/* API URL Display */}
+          <div className="mt-3 flex items-start gap-2">
+            <span className="text-xs text-gray-500 flex-shrink-0">API URL:</span>
+            <code className="text-xs text-gray-300 bg-black/30 px-2 py-1 rounded break-all flex-1">
+              {getApiUrl(plugin.endpoint)}
+            </code>
+          </div>
         </div>
       </div>
 
@@ -330,21 +328,19 @@ export function PluginCard({ plugin }: PluginCardProps) {
                 <div className="space-y-3">
                   {Object.entries(plugin.responses).map(([status, response]) => (
                     <div key={status} className="border border-white/10 rounded-lg overflow-hidden">
-                      <div className={`px-4 py-2 flex items-center gap-3 ${
-                        parseInt(status) >= 200 && parseInt(status) < 300
-                          ? "bg-green-500/10"
-                          : parseInt(status) >= 400 && parseInt(status) < 500
+                      <div className={`px-4 py-2 flex items-center gap-3 ${parseInt(status) >= 200 && parseInt(status) < 300
+                        ? "bg-green-500/10"
+                        : parseInt(status) >= 400 && parseInt(status) < 500
                           ? "bg-yellow-500/10"
                           : "bg-red-500/10"
-                      }`}>
+                        }`}>
                         <Badge
-                          className={`${
-                            parseInt(status) >= 200 && parseInt(status) < 300
-                              ? "bg-green-500/20 text-green-400 border-green-500/50"
-                              : parseInt(status) >= 400 && parseInt(status) < 500
+                          className={`${parseInt(status) >= 200 && parseInt(status) < 300
+                            ? "bg-green-500/20 text-green-400 border-green-500/50"
+                            : parseInt(status) >= 400 && parseInt(status) < 500
                               ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/50"
                               : "bg-red-500/20 text-red-400 border-red-500/50"
-                          } border font-bold`}
+                            } border font-bold`}
                         >
                           {status}
                         </Badge>
@@ -369,7 +365,7 @@ export function PluginCard({ plugin }: PluginCardProps) {
                   </div>
                   <CodeBlock code={generateCurlExample()} language="bash" />
                 </div>
-                
+
                 <div>
                   <div className="mb-2">
                     <span className="text-xs text-gray-400">Node.js (fetch)</span>
@@ -403,7 +399,7 @@ export function PluginCard({ plugin }: PluginCardProps) {
                     <p className="text-xs text-gray-500 mt-1">{param.description}</p>
                   </div>
                 ))}
-                
+
                 {/* Body Parameters */}
                 {plugin.parameters?.body?.map((param) => (
                   <div key={param.name}>
@@ -464,11 +460,10 @@ export function PluginCard({ plugin }: PluginCardProps) {
                 {/* Response Status */}
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-400">Response Status</span>
-                  <Badge className={`${
-                    response.status >= 200 && response.status < 300
-                      ? "bg-green-500/20 text-green-400"
-                      : "bg-red-500/20 text-red-400"
-                  }`}>
+                  <Badge className={`${response.status >= 200 && response.status < 300
+                    ? "bg-green-500/20 text-green-400"
+                    : "bg-red-500/20 text-red-400"
+                    }`}>
                     {response.status} {response.statusText}
                   </Badge>
                 </div>
@@ -491,8 +486,8 @@ export function PluginCard({ plugin }: PluginCardProps) {
                 {/* Response Body with Syntax Highlighting */}
                 <div>
                   <h5 className="text-sm text-gray-400 mb-2">Response Body</h5>
-                  <CodeBlock 
-                    code={JSON.stringify(response.data, null, 2)} 
+                  <CodeBlock
+                    code={JSON.stringify(response.data, null, 2)}
                     language="json"
                   />
                 </div>

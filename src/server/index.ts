@@ -25,7 +25,7 @@ app.use(
 app.use(express.urlencoded({ extended: false }));
 
 export function log(message: string, source = "express") {
-  const formattedTime = new Date().toLocaleTimeString("en-US", {
+  const formattedTime = new Date().toLocaleTimeString("id-ID", {
     hour: "numeric",
     minute: "2-digit",
     second: "2-digit",
@@ -140,8 +140,9 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  initStatsTracker();
-  log("Stats tracker initialized");
+  const statsFilePath = join(process.cwd(), "stats-data.json");
+  await initStatsTracker(statsFilePath);
+  log("Stats tracker initialized with persistence");
 
   const pluginsDir = join(process.cwd(), "src/server/plugins");
   const pluginLoader = initPluginLoader(pluginsDir);
@@ -186,8 +187,9 @@ app.use((req, res, next) => {
     });
   });
 
-  app.get("/api/stats/visitors", (_req, res) => {
-    const chartData = getStatsTracker().getVisitorChartData();
+  app.get("/api/stats/visitors", (req, res) => {
+    const days = parseInt(req.query.days as string) || 30;
+    const chartData = getStatsTracker().getVisitorChartData(days);
 
     res.json({
       success: true,
@@ -253,13 +255,27 @@ app.use((req, res, next) => {
     },
   );
 
-  process.on('uncaughtException', (error: Error) => {
-    log(`Uncaught Exception: ${error.message}`, 'error');
-    console.error(error.stack);
+  process.on('SIGTERM', async () => {
+    log('SIGTERM received, saving stats...', 'shutdown');
+    await getStatsTracker().shutdown();
+    process.exit(0);
   });
 
-  process.on('unhandledRejection', (reason: any, promise: Promise<any>) => {
+  process.on('SIGINT', async () => {
+    log('SIGINT received, saving stats...', 'shutdown');
+    await getStatsTracker().shutdown();
+    process.exit(0);
+  });
+
+  process.on('uncaughtException', async (error: Error) => {
+    log(`Uncaught Exception: ${error.message}`, 'error');
+    console.error(error.stack);
+    await getStatsTracker().shutdown();
+  });
+
+  process.on('unhandledRejection', async (reason: any, promise: Promise<any>) => {
     log(`Unhandled Rejection at: ${promise}, reason: ${reason}`, 'error');
     console.error(reason);
+    await getStatsTracker().shutdown();
   });
 })();
