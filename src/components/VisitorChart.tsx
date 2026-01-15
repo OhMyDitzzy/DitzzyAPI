@@ -11,7 +11,7 @@ interface VisitorData {
 export function VisitorChart() {
   const [data, setData] = useState<VisitorData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [days, setDays] = useState(30);
+  const [days, setDays] = useState(7);
 
   useEffect(() => {
     fetchVisitorData();
