@@ -10,6 +10,11 @@ interface VisitorData {
   count: number;
 }
 
+interface IPFailureTracking {
+  count: number;
+  resetTime: number;
+}
+
 interface GlobalStats {
   totalRequests: number;
   totalSuccess: number;
@@ -22,6 +27,9 @@ interface GlobalStats {
 
 class StatsTracker {
   private stats: GlobalStats;
+  private ipFailures: Map<string, IPFailureTracking>;
+  private readonly MAX_FAILS_PER_IP = 1;
+  private readonly FAIL_WINDOW_MS = 12 * 60 * 60 * 1000;
 
   constructor() {
     this.stats = {
@@ -33,13 +41,52 @@ class StatsTracker {
       startTime: Date.now(),
       visitorsByHour: new Map(),
     };
+    this.ipFailures = new Map();
+
+    setInterval(() => {
+      const now = Date.now();
+      this.ipFailures.forEach((tracking, ip) => {
+        if (now > tracking.resetTime) {
+          this.ipFailures.delete(ip);
+        }
+      });
+    }, 5 * 60 * 1000);
   }
 
-  trackRequest(endpoint: string, statusCode: number, clientIp: string) {
+  trackRequest(endpoint: string, statusCode: number, clientIp: string): boolean {
+    const now = Date.now();
+    const isFailed = statusCode >= 400;
+ 
+    if (isFailed) {
+      const ipTracking = this.ipFailures.get(clientIp);
+      
+      if (!ipTracking) {
+        this.ipFailures.set(clientIp, {
+          count: 1,
+          resetTime: now + this.FAIL_WINDOW_MS,
+        });
+      } else {
+        if (now > ipTracking.resetTime) {
+          ipTracking.count = 1;
+          ipTracking.resetTime = now + this.FAIL_WINDOW_MS;
+        } else {
+          if (ipTracking.count >= this.MAX_FAILS_PER_IP) {
+            return false;
+          }
+          ipTracking.count++;
+        }
+      }
+    } else {
+      const ipTracking = this.ipFailures.get(clientIp);
+      if (ipTracking && ipTracking.count > 0) {
+        ipTracking.count--;
+      }
+    }
+
     this.stats.totalRequests++;
     this.stats.uniqueVisitors.add(clientIp);
 
-    const currentHour = Math.floor(Date.now() / (1000 * 60 * 60));
+    const currentHour = Math.floor(now / (1000 * 60 * 60));
     if (!this.stats.visitorsByHour.has(currentHour)) {
       this.stats.visitorsByHour.set(currentHour, new Set());
     }
@@ -63,19 +110,21 @@ class StatsTracker {
         totalRequests: 0,
         successRequests: 0,
         failedRequests: 0,
-        lastAccessed: Date.now(),
+        lastAccessed: now,
       });
     }
 
     const endpointStats = this.stats.endpoints.get(endpoint)!;
     endpointStats.totalRequests++;
-    endpointStats.lastAccessed = Date.now();
+    endpointStats.lastAccessed = now;
 
     if (statusCode >= 200 && statusCode < 400) {
       endpointStats.successRequests++;
     } else {
       endpointStats.failedRequests++;
     }
+    
+    return true;
   }
 
   getGlobalStats() {
@@ -149,6 +198,7 @@ class StatsTracker {
       startTime: Date.now(),
       visitorsByHour: new Map(),
     };
+    this.ipFailures.clear();
   }
 }
 

@@ -101,7 +101,7 @@ app.use((req, res, next) => {
   let capturedJsonResponse: Record<string, any> | undefined = undefined;
 
   const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
+  res.json = function(bodyJson, ...args) {
     capturedJsonResponse = bodyJson;
     return originalResJson.apply(res, [bodyJson, ...args]);
   };
@@ -115,19 +115,23 @@ app.use((req, res, next) => {
       }
 
       log(logLine);
-      
+
       const excludedPaths = [
         '/api/plugins',
-        '/api/stats', 
+        '/api/stats',
         '/api/categories',
         '/docs'
       ];
-      
+
       const isPluginEndpoint = !excludedPaths.some(excluded => path.startsWith(excluded));
-      
+
       if (isPluginEndpoint) {
         const clientIp = req.ip || req.socket.remoteAddress || "unknown";
-        getStatsTracker().trackRequest(path, res.statusCode, clientIp);
+        const tracked = getStatsTracker().trackRequest(path, res.statusCode, clientIp);
+
+        if (!tracked) {
+          log(`Failed request from ${clientIp} not tracked (limit exceeded)`, "stats");
+        }
       }
     }
   });
@@ -138,14 +142,14 @@ app.use((req, res, next) => {
 (async () => {
   initStatsTracker();
   log("Stats tracker initialized");
-  
+
   const pluginsDir = join(process.cwd(), "src/server/plugins");
   const pluginLoader = initPluginLoader(pluginsDir);
- 
+
   const isDev = process.env.NODE_ENV === "development";
   await pluginLoader.loadPlugins(app, isDev);
 
-  app.get("/api/plugins", (req, res) => {
+  app.get("/api/plugins", (_req, res) => {
     const metadata = getPluginLoader().getPluginMetadata();
     res.json({
       success: true,
@@ -157,10 +161,10 @@ app.use((req, res, next) => {
   app.get("/api/plugins/category/:category", (req, res) => {
     const { category } = req.params;
     const allPlugins = getPluginLoader().getPluginMetadata();
-    const filtered = allPlugins.filter(p => 
+    const filtered = allPlugins.filter(p =>
       p.category.includes(category)
     );
-    
+
     res.json({
       success: true,
       category,
@@ -168,11 +172,11 @@ app.use((req, res, next) => {
       plugins: filtered,
     });
   });
-  
-  app.get("/api/stats", (req, res) => {
+
+  app.get("/api/stats", (_req, res) => {
     const globalStats = getStatsTracker().getGlobalStats();
     const topEndpoints = getStatsTracker().getTopEndpoints(5);
-    
+
     res.json({
       success: true,
       stats: {
@@ -181,17 +185,17 @@ app.use((req, res, next) => {
       },
     });
   });
-  
-  app.get("/api/stats/visitors", (req, res) => {
+
+  app.get("/api/stats/visitors", (_req, res) => {
     const chartData = getStatsTracker().getVisitorChartData();
-  
+
     res.json({
       success: true,
       data: chartData,
     });
   });
-  
-  app.get("/api/categories", (req, res) => {
+
+  app.get("/api/categories", (_req, res) => {
     const allPlugins = getPluginLoader().getPluginMetadata();
     const categoriesMap = new Map<string, number>();
 
@@ -210,7 +214,7 @@ app.use((req, res, next) => {
       success: true,
       categories,
     });
-  });  
+  });
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
@@ -226,7 +230,7 @@ app.use((req, res, next) => {
     const { setupVite } = await import("./vite");
     await setupVite(httpServer, app);
   }
-  
+
   app.use((req: Request, res: Response, next: NextFunction) => {
     if (req.path.startsWith("/api")) {
       return res.status(404).json({
@@ -248,7 +252,7 @@ app.use((req, res, next) => {
       log(`serving on port ${port}`);
     },
   );
-  
+
   process.on('uncaughtException', (error: Error) => {
     log(`Uncaught Exception: ${error.message}`, 'error');
     console.error(error.stack);

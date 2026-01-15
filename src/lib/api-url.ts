@@ -4,11 +4,11 @@ export function getBaseUrl(): string {
     /*if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
       return process.env.DOMAIN_URL;
     }*/
-    return `${window.location.protocol}//${window.location.host}`;
+    return `${(window as any).location.protocol}//${(window as any).location.host}`;
   }
 
   return process.env.NODE_ENV === 'production' 
-    ? `${window.location.protocol}//${window.location.host}`
+    ? `${(window as any).location.protocol}//${(window as any).location.host}`
     : 'http://localhost:5000';
 }
 
