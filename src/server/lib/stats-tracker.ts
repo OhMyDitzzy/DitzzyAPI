@@ -42,7 +42,7 @@ class StatsTracker {
       visitorsByHour: new Map(),
     };
     this.ipFailures = new Map();
-
+    
     setInterval(() => {
       const now = Date.now();
       this.ipFailures.forEach((tracking, ip) => {
@@ -55,8 +55,9 @@ class StatsTracker {
 
   trackRequest(endpoint: string, statusCode: number, clientIp: string): boolean {
     const now = Date.now();
-    const isFailed = statusCode >= 400;
- 
+    
+    const isFailed = statusCode >= 500;
+    
     if (isFailed) {
       const ipTracking = this.ipFailures.get(clientIp);
       
@@ -101,7 +102,7 @@ class StatsTracker {
 
     if (statusCode >= 200 && statusCode < 400) {
       this.stats.totalSuccess++;
-    } else {
+    } else if (statusCode >= 500) {
       this.stats.totalFailed++;
     }
 
@@ -120,7 +121,7 @@ class StatsTracker {
 
     if (statusCode >= 200 && statusCode < 400) {
       endpointStats.successRequests++;
-    } else {
+    } else if (statusCode >= 500) {
       endpointStats.failedRequests++;
     }
     
