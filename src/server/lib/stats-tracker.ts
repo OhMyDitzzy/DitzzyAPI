@@ -1,5 +1,4 @@
-import { promises as fs } from 'fs';
-import { join } from 'path';
+import { Redis } from '@upstash/redis';
 
 interface EndpointStats {
   totalRequests: number;
@@ -16,10 +15,6 @@ interface VisitorData {
 interface IPFailureTracking {
   count: number;
   resetTime: number;
-}
-
-interface DailyVisitors {
-  [date: string]: Set<string>;
 }
 
 interface GlobalStats {
@@ -47,11 +42,11 @@ class StatsTracker {
   private ipFailures: Map<string, IPFailureTracking>;
   private readonly MAX_FAILS_PER_IP = 1;
   private readonly FAIL_WINDOW_MS = 12 * 60 * 60 * 1000;
-  private readonly STATS_FILE_PATH: string;
+  private redis: Redis | null = null;
   private saveTimeout: NodeJS.Timeout | null = null;
+  private readonly REDIS_KEY = 'api-stats:global';
 
-  constructor(statsFilePath?: string) {
-    this.STATS_FILE_PATH = statsFilePath || join(process.cwd(), 'stats-data.json');
+  constructor() {
     this.stats = {
       totalRequests: 0,
       totalSuccess: 0,
@@ -62,6 +57,16 @@ class StatsTracker {
       visitorsByDay: new Map(),
     };
     this.ipFailures = new Map();
+
+    if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+      this.redis = new Redis({
+        url: process.env.UPSTASH_REDIS_REST_URL,
+        token: process.env.UPSTASH_REDIS_REST_TOKEN,
+      });
+      console.log('Redis initialized for persistent stats');
+    } else {
+      console.warn('Redis not configured - stats will be in-memory only');
+    }
     
     setInterval(() => {
       const now = Date.now();
@@ -74,41 +79,50 @@ class StatsTracker {
   }
 
   async loadStats(): Promise<void> {
-    try {
-      const data = await fs.readFile(this.STATS_FILE_PATH, 'utf-8');
-      const parsed: SerializedStats = JSON.parse(data);
+    if (!this.redis) {
+      console.log('No Redis configured, starting with fresh stats');
+      return;
+    }
 
-      this.stats.totalRequests = parsed.totalRequests || 0;
-      this.stats.totalSuccess = parsed.totalSuccess || 0;
-      this.stats.totalFailed = parsed.totalFailed || 0;
-      this.stats.uniqueVisitors = new Set(parsed.uniqueVisitors || []);
-      this.stats.startTime = parsed.startTime || Date.now();
+    try {
+      const data = await this.redis.get<SerializedStats>(this.REDIS_KEY);
+      
+      if (!data) {
+        console.log('No existing stats found in Redis, starting fresh');
+        return;
+      }
+
+      this.stats.totalRequests = data.totalRequests || 0;
+      this.stats.totalSuccess = data.totalSuccess || 0;
+      this.stats.totalFailed = data.totalFailed || 0;
+      this.stats.uniqueVisitors = new Set(data.uniqueVisitors || []);
+      this.stats.startTime = data.startTime || Date.now();
       this.stats.endpoints = new Map();
       
-      if (parsed.endpoints) {
-        Object.entries(parsed.endpoints).forEach(([endpoint, stats]) => {
+      if (data.endpoints) {
+        Object.entries(data.endpoints).forEach(([endpoint, stats]) => {
           this.stats.endpoints.set(endpoint, stats);
         });
       }
 
       this.stats.visitorsByDay = new Map();
-      if (parsed.visitorsByDay) {
-        Object.entries(parsed.visitorsByDay).forEach(([date, ips]) => {
+      if (data.visitorsByDay) {
+        Object.entries(data.visitorsByDay).forEach(([date, ips]) => {
           this.stats.visitorsByDay.set(date, new Set(ips));
         });
       }
 
-      console.log('Stats loaded successfully from', this.STATS_FILE_PATH);
-    } catch (error: any) {
-      if (error.code === 'ENOENT') {
-        console.log('No existing stats file found, starting fresh');
-      } else {
-        console.error('Error loading stats:', error);
-      }
+      console.log(`Stats loaded from Redis: ${this.stats.totalRequests} total requests`);
+    } catch (error) {
+      console.error('Error loading stats from Redis:', error);
     }
   }
 
   private async saveStats(): Promise<void> {
+    if (!this.redis) {
+      return; 
+    }
+
     try {
       const serialized: SerializedStats = {
         totalRequests: this.stats.totalRequests,
@@ -128,13 +142,13 @@ class StatsTracker {
         serialized.visitorsByDay[date] = Array.from(ips);
       });
 
-      await fs.writeFile(
-        this.STATS_FILE_PATH,
-        JSON.stringify(serialized, null, 2),
-        'utf-8'
-      );
+      await this.redis.set(this.REDIS_KEY, serialized);
+      
+      // We can use this for auto clean up
+      // However, this will be considered later.
+      // await this.redis.expire(this.REDIS_KEY, 90 * 24 * 60 * 60);
     } catch (error) {
-      console.error('Error saving stats:', error);
+      console.error('Error saving stats to Redis:', error);
     }
   }
 
@@ -142,7 +156,7 @@ class StatsTracker {
     if (this.saveTimeout) {
       clearTimeout(this.saveTimeout);
     }
-
+   
     this.saveTimeout = setTimeout(() => {
       this.saveStats();
     }, 5000);
@@ -212,7 +226,7 @@ class StatsTracker {
     } else if (statusCode >= 500) {
       endpointStats.failedRequests++;
     }
-    
+
     this.scheduleSave();
     
     return true;
@@ -239,6 +253,7 @@ class StatsTracker {
           ? `${uptimeDays}d ${uptimeHours % 24}h`
           : `${uptimeHours}h`,
       },
+      persistenceEnabled: this.redis !== null,
     };
   }
 
@@ -301,13 +316,14 @@ class StatsTracker {
       clearTimeout(this.saveTimeout);
     }
     await this.saveStats();
+    console.log('Stats saved on shutdown');
   }
 }
 
 let statsTracker: StatsTracker;
 
-export async function initStatsTracker(statsFilePath?: string) {
-  statsTracker = new StatsTracker(statsFilePath);
+export async function initStatsTracker() {
+  statsTracker = new StatsTracker();
   await statsTracker.loadStats();
   return statsTracker;
 }
