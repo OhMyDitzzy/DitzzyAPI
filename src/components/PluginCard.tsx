@@ -255,7 +255,7 @@ export function PluginCard({ plugin }: PluginCardProps) {
 
         <div className="w-full">
           <h3 className="text-xl font-bold text-white mb-2">{plugin.name}</h3>
-          <p className="text-gray-400 text-sm leading-relaxed">{plugin.description}</p>
+          <p className="text-gray-400 text-sm leading-relaxed">{plugin.description || "No description provided"}</p>
 
           {/* Tags */}
           {plugin.tags && plugin.tags.length > 0 && (

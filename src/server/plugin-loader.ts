@@ -174,10 +174,6 @@ export class PluginLoader {
       return { valid: false, reason: 'name is missing or empty' };
     }
 
-    if (!handler.description || typeof handler.description !== 'string' || handler.description.trim() === '') {
-      return { valid: false, reason: 'description is missing or empty' };
-    }
-
     return { valid: true };
   }
 

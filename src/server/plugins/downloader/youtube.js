@@ -129,7 +129,7 @@ const handler = {
       
       return sendSuccess(res, download.results);
     } catch (e) {
-      console.error("TikTok download error:", e);
+      console.error("Error:", e);
       return ErrorResponses.serverError(res);
     }
   }
