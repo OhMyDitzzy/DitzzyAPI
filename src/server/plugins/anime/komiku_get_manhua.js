@@ -9,6 +9,8 @@ const handler = {
   category: ["komiku"],
   alias: ["getLatestManhua"],
   tags: ["comic"],
+  disabled: true,
+  disabledReason: "Komiku server is temporarily unavailable, Maybe this feature will not be removed until the server is back.",
   responses: {
     200: {
       status: 200,

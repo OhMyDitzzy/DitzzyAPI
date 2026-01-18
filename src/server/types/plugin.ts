@@ -1,14 +1,22 @@
 import { Request, Response, NextFunction } from "express";
 
+export interface FileConstraints {
+  maxSize?: number; // NOTE: in bytes, e.g., 5 * 1024 * 1024 for 5MB
+  acceptedTypes?: string[]; // NOTE: MIME types, e.g., ['image/jpeg', 'image/png']
+  acceptedExtensions?: string[]; // e.g., ['.jpg', '.png', '.pdf']
+}
+
 export interface PluginParameter {
   name: string;
-  type: "string" | "number" | "boolean" | "array" | "object";
+  type: "string" | "number" | "boolean" | "array" | "object" | "file";
   required: boolean;
   description: string;
   example?: any;
   default?: any;
   enum?: any[];
   pattern?: string;
+  fileConstraints?: FileConstraints;
+  acceptUrl?: boolean;
 }
 
 export interface PluginResponse {
@@ -27,17 +35,21 @@ export interface PluginParameters {
 export interface ApiPluginHandler {
   name: string;
   description: string;
-  version: string;
+  version?: string;
   category: string[];
   method: "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
   alias: string[];
-  tags?: string[]; 
+  tags?: string[];
   parameters?: PluginParameters;
   responses?: {
     [statusCode: number]: PluginResponse;
   };
-
-  exec: (req: Request, res: Response, next: NextFunction) => Promise<any> | any;
+  disabled?: boolean;
+  deprecated?: boolean;
+  disabledReason?: string;
+  deprecatedReason?: string;
+  
+  exec: (req: Request, res: Response, next: NextFunction) => Promise<void> | void;
 }
 
 export interface PluginMetadata {
@@ -53,6 +65,10 @@ export interface PluginMetadata {
   responses?: {
     [statusCode: number]: PluginResponse;
   };
+  disabled?: boolean;
+  deprecated?: boolean;
+  disabledReason?: string;
+  deprecatedReason?: string;
 }
 
 export interface PluginRegistry {
@@ -60,13 +76,4 @@ export interface PluginRegistry {
     handler: ApiPluginHandler;
     metadata: PluginMetadata;
   };
-}
-
-export interface ApiResponse<T = any> {
-  status: number;
-  message?: string;
-  author?: string;
-  note?: string;
-  results?: T;
-  error?: string;
 }

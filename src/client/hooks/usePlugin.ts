@@ -1,14 +1,22 @@
 import { useState, useEffect } from "react";
 
+export interface FileConstraints {
+  maxSize?: number;
+  acceptedTypes?: string[];
+  acceptedExtensions?: string[];
+}
+
 export interface PluginParameter {
   name: string;
-  type: "string" | "number" | "boolean" | "array" | "object";
+  type: "string" | "number" | "boolean" | "array" | "object" | "file";
   required: boolean;
   description: string;
   example?: any;
   default?: any;
   enum?: any[];
   pattern?: string;
+  fileConstraints?: FileConstraints;
+  acceptUrl?: boolean;
 }
 
 export interface PluginResponse {
@@ -37,6 +45,10 @@ export interface PluginMetadata {
   responses?: {
     [statusCode: number]: PluginResponse;
   };
+  disabled?: boolean;
+  deprecated?: boolean;
+  disabledReason?: string;
+  deprecatedReason?: string;
 }
 
 export interface ApiStats {

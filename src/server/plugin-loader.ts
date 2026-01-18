@@ -43,7 +43,7 @@ export class PluginLoader {
     let reloadTimeout: NodeJS.Timeout | null = null;
 
     this.watcher = watch(this.pluginsDir, {
-      ignored: /(^|[\/\\])\../, // ignore dotfiles
+      ignored: /(^|[\/\\])\../, 
       persistent: true,
       ignoreInitial: true,
       awaitWriteFinish: {
@@ -87,7 +87,6 @@ export class PluginLoader {
       try {
         await this.scanDirectory(this.pluginsDir, newRouter);
 
-        // If successful, replace old router with new one
         this.removeOldRouter();
         this.router = newRouter;
         this.app.use("/api", this.router);
@@ -109,7 +108,6 @@ export class PluginLoader {
     if (!this.app) return;
 
     try {
-      // Express 5 uses app._router differently
       const stack = (this.app as any)._router?.stack || [];
 
       for (let i = stack.length - 1; i >= 0; i--) {
@@ -119,7 +117,6 @@ export class PluginLoader {
         }
       }
     } catch (error) {
-      // if _router structure is different, just log warning
       console.warn("⚠️ Could not remove old router, continuing anyway...");
     }
   }
@@ -136,10 +133,6 @@ export class PluginLoader {
       if (stat.isDirectory()) {
         this.clearModuleCache(fullPath);
       } else if (stat.isFile() && (extname(item) === ".ts" || extname(item) === ".js")) {
-        // In ES modules, we can't clear cache like CommonJS.
-        // Hot Reload also doesn't seem to have any effect on API serving.
-        // For now, Just log and mark as reload, We have to restart the server in "development" mode.
-        // TODO: Find another way. If hot reloading doesn't work, try restarting automatically.
         const relativePath = relative(process.cwd(), fullPath);
         console.log(`♻️ Marked for reload: ${relativePath}`);
       }
@@ -207,6 +200,17 @@ export class PluginLoader {
         return;
       }
 
+      if (handler.disabled) {
+        const reason = handler.disabledReason || "This plugin has been disabled";
+        console.log(`🚫 Plugin '${handler.name}' is disabled: ${reason}`);
+        // Still register it but with disabled flag
+      }
+
+      if (handler.deprecated) {
+        const reason = handler.deprecatedReason || "This plugin is deprecated and may be removed in future versions";
+        console.warn(`⚠️ Plugin '${handler.name}' is deprecated: ${reason}`);
+      }
+
       const metadataValidation = this.isValidPluginMetadata(handler, fileName);
       const shouldShowInDocs = metadataValidation.valid;
 
@@ -222,7 +226,26 @@ export class PluginLoader {
       const primaryEndpoint = basePath ? `${basePath}/${primaryAlias}` : `/${primaryAlias}`;
       const method = handler.method.toLowerCase() as "get" | "post" | "put" | "delete" | "patch";
 
+      // Wrap exec function to handle disabled/deprecated plugins
       const wrappedExec = async (req: any, res: any, next: any) => {
+        // If plugin is disabled, return error response
+        if (handler.disabled) {
+          const reason = handler.disabledReason || "This plugin has been disabled";
+          return res.status(503).json({
+            success: false,
+            message: "Plugin is disabled",
+            reason: reason,
+            plugin: handler.name || 'unknown',
+          });
+        }
+
+        // If plugin is deprecated, add warning header
+        if (handler.deprecated) {
+          const reason = handler.deprecatedReason || "This plugin is deprecated and may be removed in future versions";
+          res.setHeader('X-Plugin-Deprecated', 'true');
+          res.setHeader('X-Deprecation-Reason', reason);
+        }
+
         try {
           await handler.exec(req, res, next);
         } catch (error) {
@@ -241,7 +264,9 @@ export class PluginLoader {
       for (const alias of handler.alias) {
         const endpoint = basePath ? `${basePath}/${alias}` : `/${alias}`;
         router[method](endpoint, wrappedExec);
-        console.log(`✓ [${handler.method}] ${endpoint} -> ${handler.name || 'unnamed'}`);
+        
+        const statusIcon = handler.disabled ? '🚫' : handler.deprecated ? '⚠️' : '✓';
+        console.log(`${statusIcon} [${handler.method}] ${endpoint} -> ${handler.name || 'unnamed'}`);
       }
 
       if (shouldShowInDocs) {
@@ -260,7 +285,11 @@ export class PluginLoader {
             headers: [],
             path: []
           },
-          responses: handler.responses || {}
+          responses: handler.responses || {},
+          disabled: handler.disabled,
+          deprecated: handler.deprecated,
+          disabledReason: handler.disabledReason,
+          deprecatedReason: handler.deprecatedReason
         };
 
         this.pluginRegistry[primaryEndpoint] = { handler, metadata };

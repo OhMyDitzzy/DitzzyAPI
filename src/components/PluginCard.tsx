@@ -6,8 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { PluginMetadata } from "@/client/hooks/usePlugin";
-import { Play, ChevronDown, ChevronUp, Copy, Check } from "lucide-react";
+import { Play, ChevronDown, ChevronUp, Copy, Check, AlertTriangle, XCircle } from "lucide-react";
 import { CodeBlock } from "@/components/CodeBlock";
+import { FileUpload } from "@/components/FileUpload";
 import { getApiUrl } from "@/lib/api-url";
 
 interface PluginCardProps {
@@ -24,6 +25,8 @@ const methodColors: Record<string, string> = {
 
 export function PluginCard({ plugin }: PluginCardProps) {
   const [paramValues, setParamValues] = useState<Record<string, string>>({});
+  const [fileParams, setFileParams] = useState<Record<string, File | null>>({});
+  const [urlParams, setUrlParams] = useState<Record<string, string>>({});
   const [response, setResponse] = useState<any>(null);
   const [responseHeaders, setResponseHeaders] = useState<Record<string, string>>({});
   const [requestUrl, setRequestUrl] = useState<string>("");
@@ -32,23 +35,58 @@ export function PluginCard({ plugin }: PluginCardProps) {
   const [copiedUrl, setCopiedUrl] = useState(false);
   const [copiedRequestUrl, setCopiedRequestUrl] = useState(false);
 
+  const isDisabled = plugin.disabled;
+  const isDeprecated = plugin.deprecated;
+
   const handleParamChange = (paramName: string, value: string) => {
     setParamValues((prev) => ({ ...prev, [paramName]: value }));
   };
 
+  const handleFileChange = (paramName: string, file: File | null) => {
+    setFileParams((prev) => ({ ...prev, [paramName]: file }));
+  };
+
+  const handleUrlParamChange = (paramName: string, url: string) => {
+    setUrlParams((prev) => ({ ...prev, [paramName]: url }));
+  };
+  
   const handleExecute = async () => {
+    if (isDisabled) {
+      setResponse({
+        status: 503,
+        statusText: "Service Unavailable",
+        data: {
+          success: false,
+          message: "Plugin is disabled",
+          reason: plugin.disabledReason || "This plugin has been disabled"
+        }
+      });
+      return;
+    }
+
     setLoading(true);
 
     try {
       let url = "/api" + plugin.endpoint;
       let fullUrl = getApiUrl(plugin.endpoint);
 
+      // Check if we have any file parameters
+      const hasFiles = Object.values(fileParams).some(file => file !== null);
+      const hasUrls = Object.values(urlParams).some(url => url !== "");
+
       if (plugin.method === "GET" && plugin.parameters?.query) {
         const queryParams = new URLSearchParams();
         plugin.parameters.query.forEach((param) => {
-          const value = paramValues[param.name];
-          if (value) {
-            queryParams.append(param.name, value);
+          if (param.type === "file" && param.acceptUrl) {
+            const urlValue = urlParams[param.name];
+            if (urlValue) {
+              queryParams.append(param.name, urlValue);
+            }
+          } else {
+            const value = paramValues[param.name];
+            if (value) {
+              queryParams.append(param.name, value);
+            }
           }
         });
 
@@ -64,7 +102,34 @@ export function PluginCard({ plugin }: PluginCardProps) {
         method: plugin.method,
       };
 
-      if (["POST", "PUT", "PATCH"].includes(plugin.method) && plugin.parameters?.body) {
+      if (hasFiles || (hasUrls && plugin.method !== "GET")) {
+        const formData = new FormData();
+
+        Object.entries(fileParams).forEach(([name, file]) => {
+          if (file) {
+            formData.append(name, file);
+          }
+        });
+
+        Object.entries(urlParams).forEach(([name, url]) => {
+          if (url && !fileParams[name]) {
+            formData.append(name, url);
+          }
+        });
+
+        if (plugin.parameters?.body) {
+          plugin.parameters.body.forEach((param) => {
+            if (param.type !== "file") {
+              const value = paramValues[param.name];
+              if (value) {
+                formData.append(param.name, value);
+              }
+            }
+          });
+        }
+
+        fetchOptions.body = formData;
+      } else if (["POST", "PUT", "PATCH"].includes(plugin.method) && plugin.parameters?.body) {
         const bodyData: Record<string, any> = {};
         plugin.parameters.body.forEach((param) => {
           const value = paramValues[param.name];
@@ -78,13 +143,53 @@ export function PluginCard({ plugin }: PluginCardProps) {
         };
       }
 
-      const res = await fetch(url, fetchOptions);
-      const data = await res.json();
+      // Add XMLHttpRequest fallback for FormData to avoid HTTP/2 issues
+      let res;
+      let data;
+      
+      if (fetchOptions.body instanceof FormData) {
+        // Use XMLHttpRequest for FormData to ensure compatibility
+        const xhr = new XMLHttpRequest();
+        
+        const xhrPromise = new Promise((resolve, reject) => {
+          xhr.onload = () => {
+            try {
+              const responseData = JSON.parse(xhr.responseText);
+              resolve({
+                status: xhr.status,
+                statusText: xhr.statusText,
+                headers: new Headers(),
+                json: async () => responseData
+              });
+            } catch (e) {
+              reject(new Error('Failed to parse response'));
+            }
+          };
+          
+          xhr.onerror = () => reject(new Error('Network request failed'));
+          xhr.ontimeout = () => reject(new Error('Request timeout'));
+          
+          xhr.open(plugin.method, url, true);
+          xhr.timeout = 60000; // 60 second timeout
+          xhr.send(fetchOptions.body as FormData);
+        });
+        
+        res = await xhrPromise as any;
+        data = await res.json();
+      } else {
+        // Use fetch for non-FormData requests
+        res = await fetch(url, fetchOptions);
+        data = await res.json();
+      }
 
       const headers: Record<string, string> = {};
-      res.headers.forEach((value, key) => {
-        headers[key] = value;
-      });
+      
+      // Get headers from Response object
+      if (res.headers && typeof res.headers.forEach === 'function') {
+        res.headers.forEach((value: string, key: string) => {
+          headers[key] = value;
+        });
+      }
 
       setResponseHeaders(headers);
       setResponse({
@@ -118,13 +223,28 @@ export function PluginCard({ plugin }: PluginCardProps) {
   };
 
   const renderParameterInput = (param: any) => {
+    if (param.type === "file") {
+      return (
+        <FileUpload
+          name={param.name}
+          description={param.description}
+          fileConstraints={param.fileConstraints}
+          acceptUrl={param.acceptUrl}
+          onFileChange={(file) => handleFileChange(param.name, file)}
+          onUrlChange={param.acceptUrl ? (url) => handleUrlParamChange(param.name, url) : undefined}
+          disabled={isDisabled}
+        />
+      );
+    }
+
     if (param.enum && Array.isArray(param.enum) && param.enum.length > 0) {
       return (
         <Select
           value={paramValues[param.name] || ""}
           onValueChange={(value) => handleParamChange(param.name, value)}
+          disabled={isDisabled}
         >
-          <SelectTrigger className="bg-black/50 border-white/10 text-white focus:border-purple-500">
+          <SelectTrigger className="bg-black/50 border-white/10 text-white focus:border-purple-500 disabled:opacity-50">
             <SelectValue placeholder={`Select ${param.name}...`} />
           </SelectTrigger>
           <SelectContent className="bg-zinc-900 border-white/10">
@@ -140,17 +260,18 @@ export function PluginCard({ plugin }: PluginCardProps) {
           </SelectContent>
         </Select>
       );
-    } else {
-      return (
-        <Input
-          type="text"
-          placeholder={param.example?.toString() || param.description}
-          value={paramValues[param.name] || ""}
-          onChange={(e) => handleParamChange(param.name, e.target.value)}
-          className="bg-black/50 border-white/10 text-white focus:border-purple-500"
-        />
-      );
     }
+
+    return (
+      <Input
+        type="text"
+        placeholder={param.example?.toString() || param.description}
+        value={paramValues[param.name] || ""}
+        onChange={(e) => handleParamChange(param.name, e.target.value)}
+        disabled={isDisabled}
+        className="bg-black/50 border-white/10 text-white focus:border-purple-500 disabled:opacity-50"
+      />
+    );
   };
 
   const hasQueryParams = plugin.parameters?.query && plugin.parameters.query.length > 0;
@@ -163,7 +284,12 @@ export function PluginCard({ plugin }: PluginCardProps) {
 
     if (hasQueryParams) {
       const exampleParams = plugin.parameters!.query!
-        .map((p) => `${p.name}=${p.example || 'value'}`)
+        .map((p) => {
+          if (p.type === "file" && p.acceptUrl) {
+            return `${p.name}=https://example.com/file.jpg`;
+          }
+          return `${p.name}=${p.example || 'value'}`;
+        })
         .join('&');
       curl += `?${exampleParams}`;
     }
@@ -171,31 +297,80 @@ export function PluginCard({ plugin }: PluginCardProps) {
     curl += '"';
 
     if (hasBodyParams) {
-      curl += ' \\\n  -H "Content-Type: application/json" \\\n  -d \'';
-      const bodyExample: Record<string, any> = {};
-      plugin.parameters!.body!.forEach((p) => {
-        bodyExample[p.name] = p.example || 'value';
-      });
-      curl += JSON.stringify(bodyExample, null, 2);
-      curl += "'";
+      const hasFileParams = plugin.parameters!.body!.some(p => p.type === "file");
+      
+      if (hasFileParams) {
+        curl += ' \\\n';
+        plugin.parameters!.body!.forEach((p) => {
+          if (p.type === "file") {
+            if (p.acceptUrl) {
+              curl += `  -F "${p.name}=https://example.com/file.jpg" \\\n`;
+            } else {
+              curl += `  -F "${p.name}=@/path/to/file" \\\n`;
+            }
+          } else {
+            curl += `  -F "${p.name}=${p.example || 'value'}" \\\n`;
+          }
+        });
+        curl = curl.slice(0, -3); // Remove last \\\n
+      } else {
+        curl += ' \\\n  -H "Content-Type: application/json" \\\n  -d \'';
+        const bodyExample: Record<string, any> = {};
+        plugin.parameters!.body!.forEach((p) => {
+          bodyExample[p.name] = p.example || 'value';
+        });
+        curl += JSON.stringify(bodyExample, null, 2);
+        curl += "'";
+      }
     }
 
     return curl;
   };
 
   const generateNodeExample = () => {
+    const hasFileParams = plugin.parameters?.body?.some(p => p.type === "file") || false;
+
+    if (hasFileParams) {
+      let code = 'const formData = new FormData();\n';
+      
+      plugin.parameters!.body!.forEach((p) => {
+        if (p.type === "file") {
+          if (p.acceptUrl) {
+            code += `formData.append("${p.name}", "https://example.com/file.jpg");\n`;
+          } else {
+            code += `// For file upload from input: <input type="file" id="fileInput">\n`;
+            code += `const fileInput = document.getElementById("fileInput");\n`;
+            code += `formData.append("${p.name}", fileInput.files[0]);\n`;
+          }
+        } else {
+          code += `formData.append("${p.name}", "${p.example || 'value'}");\n`;
+        }
+      });
+
+      code += `\nconst response = await fetch("${getApiUrl(plugin.endpoint)}", {\n`;
+      code += `  method: "${plugin.method}",\n`;
+      code += `  body: formData\n`;
+      code += '});\n\nconst data = await response.json();\nconsole.log(data);';
+      return code;
+    }
+
     let code = `const response = await fetch("${getApiUrl(plugin.endpoint)}`;
 
     if (hasQueryParams) {
       const exampleParams = plugin.parameters!.query!
-        .map((p) => `${p.name}=${p.example || 'value'}`)
+        .map((p) => {
+          if (p.type === "file" && p.acceptUrl) {
+            return `${p.name}=https://example.com/file.jpg`;
+          }
+          return `${p.name}=${p.example || 'value'}`;
+        })
         .join('&');
       code += `?${exampleParams}`;
     }
 
     code += '", {\n  method: "' + plugin.method + '"';
 
-    if (hasBodyParams) {
+    if (hasBodyParams && !hasFileParams) {
       code += ',\n  headers: {\n    "Content-Type": "application/json"\n  },\n  body: JSON.stringify(';
       const bodyExample: Record<string, any> = {};
       plugin.parameters!.body!.forEach((p) => {
@@ -210,8 +385,8 @@ export function PluginCard({ plugin }: PluginCardProps) {
   };
 
   return (
-    <Card className="bg-white/[0.02] border-white/10 overflow-hidden w-full">
-      {/* Collapsible Header */}
+    <Card className={`bg-white/[0.02] border-white/10 overflow-hidden w-full ${isDisabled ? 'opacity-60' : ''}`}>
+      {/* Header */}
       <div
         className="p-4 border-b border-white/10 cursor-pointer hover:bg-white/[0.02] transition-colors"
         onClick={() => setIsExpanded(!isExpanded)}
@@ -221,6 +396,20 @@ export function PluginCard({ plugin }: PluginCardProps) {
             {plugin.method}
           </Badge>
           <code className="text-sm text-purple-400 font-mono flex-1 min-w-0 break-all">{plugin.endpoint}</code>
+          
+          {isDisabled && (
+            <Badge className="bg-red-500/20 text-red-400 border-red-500/50 border flex items-center gap-1 flex-shrink-0">
+              <XCircle className="w-3 h-3" />
+              Disabled
+            </Badge>
+          )}
+          {isDeprecated && !isDisabled && (
+            <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/50 border flex items-center gap-1 flex-shrink-0">
+              <AlertTriangle className="w-3 h-3" />
+              Deprecated
+            </Badge>
+          )}
+
           <div className="flex items-center gap-1 flex-shrink-0">
             <button
               onClick={(e) => {
@@ -257,7 +446,26 @@ export function PluginCard({ plugin }: PluginCardProps) {
           <h3 className="text-xl font-bold text-white mb-2">{plugin.name}</h3>
           <p className="text-gray-400 text-sm leading-relaxed">{plugin.description || "No description provided"}</p>
 
-          {/* Tags */}
+          {isDisabled && plugin.disabledReason && (
+            <div className="mt-3 p-3 bg-red-500/10 border border-red-500/30 rounded-lg flex items-start gap-2">
+              <XCircle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-red-400">Plugin Disabled</p>
+                <p className="text-xs text-red-300 mt-1">{plugin.disabledReason}</p>
+              </div>
+            </div>
+          )}
+
+          {isDeprecated && !isDisabled && plugin.deprecatedReason && (
+            <div className="mt-3 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg flex items-start gap-2">
+              <AlertTriangle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-semibold text-yellow-400">Plugin Deprecated</p>
+                <p className="text-xs text-yellow-300 mt-1">{plugin.deprecatedReason}</p>
+              </div>
+            </div>
+          )}
+
           {plugin.tags && plugin.tags.length > 0 && (
             <div className="flex flex-wrap gap-2 mt-3">
               {plugin.tags.map((tag) => (
@@ -268,7 +476,6 @@ export function PluginCard({ plugin }: PluginCardProps) {
             </div>
           )}
 
-          {/* API URL Display */}
           <div className="mt-3 flex items-start gap-2">
             <span className="text-xs text-gray-500 flex-shrink-0">API URL:</span>
             <code className="text-xs text-gray-300 bg-black/30 px-2 py-1 rounded break-all flex-1">
@@ -298,7 +505,6 @@ export function PluginCard({ plugin }: PluginCardProps) {
 
           {/* Documentation Tab */}
           <TabsContent value="documentation" className="p-6 space-y-6">
-            {/* Parameters Table */}
             {hasAnyParams && (
               <div>
                 <h4 className="text-purple-400 font-semibold mb-3">Parameters</h4>
@@ -313,12 +519,25 @@ export function PluginCard({ plugin }: PluginCardProps) {
                       </tr>
                     </thead>
                     <tbody>
-                      {/* Path Parameters */}
-                      {plugin.parameters?.path?.map((param) => (
+                      {[...(plugin.parameters?.path || []), ...(plugin.parameters?.query || []), ...(plugin.parameters?.body || [])].map((param) => (
                         <tr key={param.name} className="border-b border-white/5">
                           <td className="py-3 pr-4 text-white font-mono">{param.name}</td>
                           <td className="py-3 pr-4">
                             <span className="text-blue-400 font-mono text-xs">{param.type}</span>
+                            {param.type === "file" && param.fileConstraints && (
+                              <div className="mt-1 space-y-1">
+                                {param.fileConstraints.maxSize && (
+                                  <div className="text-xs text-gray-500">
+                                    Max: {(param.fileConstraints.maxSize / 1024 / 1024).toFixed(1)}MB
+                                  </div>
+                                )}
+                                {param.fileConstraints.acceptedTypes && (
+                                  <div className="text-xs text-gray-500">
+                                    Types: {param.fileConstraints.acceptedTypes.join(', ')}
+                                  </div>
+                                )}
+                              </div>
+                            )}
                             {param.enum && (
                               <span className="ml-2 text-xs text-gray-500">
                                 (options: {param.enum.join(', ')})
@@ -330,47 +549,14 @@ export function PluginCard({ plugin }: PluginCardProps) {
                               {param.required ? "Yes" : "No"}
                             </span>
                           </td>
-                          <td className="py-3 text-gray-400">{param.description}</td>
-                        </tr>
-                      ))}
-                      {/* Query Parameters */}
-                      {plugin.parameters?.query?.map((param) => (
-                        <tr key={param.name} className="border-b border-white/5">
-                          <td className="py-3 pr-4 text-white font-mono">{param.name}</td>
-                          <td className="py-3 pr-4">
-                            <span className="text-blue-400 font-mono text-xs">{param.type}</span>
-                            {param.enum && (
-                              <span className="ml-2 text-xs text-gray-500">
-                                (options: {param.enum.join(', ')})
+                          <td className="py-3 text-gray-400">
+                            {param.description}
+                            {param.type === "file" && param.acceptUrl && (
+                              <span className="block mt-1 text-xs text-purple-400">
+                                ✓ Can also accept URL
                               </span>
                             )}
                           </td>
-                          <td className="py-3 pr-4">
-                            <span className={param.required ? "text-red-400" : "text-gray-500"}>
-                              {param.required ? "Yes" : "No"}
-                            </span>
-                          </td>
-                          <td className="py-3 text-gray-400">{param.description}</td>
-                        </tr>
-                      ))}
-                      {/* Body Parameters */}
-                      {plugin.parameters?.body?.map((param) => (
-                        <tr key={param.name} className="border-b border-white/5">
-                          <td className="py-3 pr-4 text-white font-mono">{param.name}</td>
-                          <td className="py-3 pr-4">
-                            <span className="text-blue-400 font-mono text-xs">{param.type}</span>
-                            {param.enum && (
-                              <span className="ml-2 text-xs text-gray-500">
-                                (options: {param.enum.join(', ')})
-                              </span>
-                            )}
-                          </td>
-                          <td className="py-3 pr-4">
-                            <span className={param.required ? "text-red-400" : "text-gray-500"}>
-                              {param.required ? "Yes" : "No"}
-                            </span>
-                          </td>
-                          <td className="py-3 text-gray-400">{param.description}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -379,7 +565,7 @@ export function PluginCard({ plugin }: PluginCardProps) {
               </div>
             )}
 
-            {/* Responses */}
+            {/* Responses section */}
             {plugin.responses && Object.keys(plugin.responses).length > 0 && (
               <div>
                 <h4 className="text-purple-400 font-semibold mb-3">Responses</h4>
@@ -436,42 +622,27 @@ export function PluginCard({ plugin }: PluginCardProps) {
 
           {/* Try It Out Tab */}
           <TabsContent value="try" className="p-6">
-            {/* Parameters Input */}
             {hasAnyParams ? (
               <div className="space-y-4 mb-4">
-                {/* Query Parameters */}
-                {plugin.parameters?.query?.map((param) => (
+                {[...(plugin.parameters?.query || []), ...(plugin.parameters?.body || [])].map((param) => (
                   <div key={param.name}>
-                    <label className="block text-sm text-gray-300 mb-2">
-                      {param.name}
-                      {param.required && <span className="text-red-400 ml-1">*</span>}
-                      <span className="text-xs text-gray-500 ml-2">({param.type})</span>
-                      {param.enum && (
-                        <span className="text-xs text-purple-400 ml-2">
-                          • Select from options
-                        </span>
-                      )}
-                    </label>
-                    {renderParameterInput(param)}
-                    <p className="text-xs text-gray-500 mt-1">{param.description}</p>
-                  </div>
-                ))}
-
-                {/* Body Parameters */}
-                {plugin.parameters?.body?.map((param) => (
-                  <div key={param.name}>
-                    <label className="block text-sm text-gray-300 mb-2">
-                      {param.name}
-                      {param.required && <span className="text-red-400 ml-1">*</span>}
-                      <span className="text-xs text-gray-500 ml-2">({param.type})</span>
-                      {param.enum && (
-                        <span className="text-xs text-purple-400 ml-2">
-                          • Select from options
-                        </span>
-                      )}
-                    </label>
-                    {renderParameterInput(param)}
-                    <p className="text-xs text-gray-500 mt-1">{param.description}</p>
+                    {param.type !== "file" && (
+                      <>
+                        <label className="block text-sm text-gray-300 mb-2">
+                          {param.name}
+                          {param.required && <span className="text-red-400 ml-1">*</span>}
+                          <span className="text-xs text-gray-500 ml-2">({param.type})</span>
+                          {param.enum && (
+                            <span className="text-xs text-purple-400 ml-2">
+                              • Select from options
+                            </span>
+                          )}
+                        </label>
+                        {renderParameterInput(param)}
+                        <p className="text-xs text-gray-500 mt-1">{param.description}</p>
+                      </>
+                    )}
+                    {param.type === "file" && renderParameterInput(param)}
                   </div>
                 ))}
               </div>
@@ -479,41 +650,52 @@ export function PluginCard({ plugin }: PluginCardProps) {
               <p className="text-sm text-gray-400 mb-4">No parameters required</p>
             )}
 
-            {/* Execute Button */}
             <Button
               onClick={handleExecute}
-              disabled={loading}
-              className="w-full bg-purple-500 hover:bg-purple-600 text-white py-6 text-base font-semibold"
+              disabled={loading || isDisabled}
+              className="w-full bg-purple-500 hover:bg-purple-600 text-white py-6 text-base font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <Play className="w-5 h-5 mr-2" />
-              {loading ? "Executing..." : "Execute"}
+              {loading ? "Executing..." : isDisabled ? "Plugin Disabled" : "Execute"}
             </Button>
 
             {/* Response Display */}
             {response && (
               <div className="mt-6 space-y-4">
-                {/* Request URL */}
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm text-gray-400">Request URL</span>
-                    <button
-                      onClick={copyRequestUrl}
-                      className="text-gray-400 hover:text-white transition-colors p-1"
-                      title="Copy Request URL"
-                    >
-                      {copiedRequestUrl ? (
-                        <Check className="w-4 h-4 text-green-400" />
-                      ) : (
-                        <Copy className="w-4 h-4" />
-                      )}
-                    </button>
+                {isDeprecated && responseHeaders['x-plugin-deprecated'] && (
+                  <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg flex items-start gap-2">
+                    <AlertTriangle className="w-5 h-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-semibold text-yellow-400">Deprecation Warning</p>
+                      <p className="text-xs text-yellow-300 mt-1">
+                        {responseHeaders['x-deprecation-reason'] || 'This plugin is deprecated'}
+                      </p>
+                    </div>
                   </div>
-                  <div className="bg-black/50 border border-white/10 rounded p-3 overflow-x-auto">
-                    <code className="text-xs text-purple-300 break-all">{requestUrl}</code>
-                  </div>
-                </div>
+                )}
 
-                {/* Response Status */}
+                {requestUrl && (
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm text-gray-400">Request URL</span>
+                      <button
+                        onClick={copyRequestUrl}
+                        className="text-gray-400 hover:text-white transition-colors p-1"
+                        title="Copy Request URL"
+                      >
+                        {copiedRequestUrl ? (
+                          <Check className="w-4 h-4 text-green-400" />
+                        ) : (
+                          <Copy className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+                    <div className="bg-black/50 border border-white/10 rounded p-3 overflow-x-auto">
+                      <code className="text-xs text-purple-300 break-all">{requestUrl}</code>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-gray-400">Response Status</span>
                   <Badge className={`${response.status >= 200 && response.status < 300
@@ -524,7 +706,6 @@ export function PluginCard({ plugin }: PluginCardProps) {
                   </Badge>
                 </div>
 
-                {/* Response Headers */}
                 {Object.keys(responseHeaders).length > 0 && (
                   <div>
                     <h5 className="text-sm text-gray-400 mb-2">Response Headers</h5>
@@ -539,7 +720,6 @@ export function PluginCard({ plugin }: PluginCardProps) {
                   </div>
                 )}
 
-                {/* Response Body with Syntax Highlighting */}
                 <div>
                   <h5 className="text-sm text-gray-400 mb-2">Response Body</h5>
                   <CodeBlock

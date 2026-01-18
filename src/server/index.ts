@@ -19,10 +19,11 @@ app.use(
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
+    limit: '10mb'
   }),
 );
 
-app.use(express.urlencoded({ extended: false }));
+app.use(express.urlencoded({ limit: '10mb', extended: false }));
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("id-ID", {
