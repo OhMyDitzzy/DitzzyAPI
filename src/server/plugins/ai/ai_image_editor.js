@@ -36,6 +36,8 @@ const handler = {
   category: ["ai"],
   alias: ["aiImageEditor"],
   tags: ["ai", "image"],
+  disabled: true,
+  disabledReason: "The API Server is restricting access to their API with IP Tracking, We are making some efforts to find a way at the moment, Please wait until it is fixed",
   parameters: {
     body: [
       {
