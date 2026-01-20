@@ -231,7 +231,7 @@ export class PluginLoader {
         // If plugin is disabled, return error response
         if (handler.disabled) {
           const reason = handler.disabledReason || "This plugin has been disabled";
-          return res.status(503).json({
+          return res.status(403).json({
             success: false,
             message: "Plugin is disabled",
             reason: reason,
